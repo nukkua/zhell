@@ -39,7 +39,7 @@ const Commands = enum {
 
 
 fn exec_input(line: []u8, io: Io) !void {
-    _ = std.mem.replaceScalar(u8, line, '\n', ' '); // it modifies the slice
+    _ = std.mem.replaceScalar(u8, line, '\n', ' '); 
     var args = std.mem.splitScalar(u8, line, ' ');
 
     const command = try Commands.parse(args.first());
