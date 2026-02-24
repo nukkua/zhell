@@ -1,5 +1,5 @@
 // UNIX is very simple
-// it just neds a genius to understand its simplicity
+// it just needs a genius to understand its simplicity
 const std = @import("std");
 const Io  = std.Io;
 
@@ -11,18 +11,37 @@ pub fn main(init: std.process.Init) !void {
     var writer_buffer: [1024]u8 = undefined;
     var writer = Io.File.stdout().writer(init.io, &writer_buffer);
     const stdout = &writer.interface;
+    try get_prompt(init.arena.allocator(), init.io);
 
     while (true) {
         try stdout.print("> ", .{});
         try stdout.flush();
 
         const line = stdin.takeDelimiterInclusive('\n') catch |e| switch (e) {
-            error.ReadFailed => continue,
+            error.ReadFailed =>    continue,
             error.StreamTooLong => unreachable,
-            error.EndOfStream => unreachable,
+            error.EndOfStream => {
+                try stdout.print("\nexit\n", .{});
+                try stdout.flush();
+                std.process.exit(0);
+            },
         };
-        _ = exec_input(line, init.io) catch |err| switch (err) {
-            error.InvalidCommand => std.debug.print("Invalid Command\n", .{}),
+        var args = std.mem.splitScalar(u8, std.mem.trimEnd(u8, line, "\n"), ' ');
+        _ = exec_input(line, init.io, stdout) catch |err| switch (err) {
+            error.InvalidCommand => {
+                const command = args.first();
+                std.debug.print("zhell: Unknown Command: {s}\n", .{command});
+            },
+            error.TooManyArguments => {
+                const command = args.first();
+                std.debug.print("zhell: {s}: too many arguments\n", .{command});
+            },
+            error.PathRequired => std.debug.print("zhell: The Path is Required\n", .{}),
+            error.DirNotFound => {
+                const command = args.first();
+                const first_parameter = args.next();
+                std.debug.print("zhell: {s}: {?s}: No such file or directory\n", .{command, first_parameter});
+            },
             else => unreachable,
         };
     }
@@ -31,6 +50,7 @@ pub fn main(init: std.process.Init) !void {
 const Commands = enum {
     cd,
     ls,
+    echo,
     exit,
     pub fn parse(input: []const u8) !Commands {
         return std.meta.stringToEnum(Commands, input) orelse error.InvalidCommand;
@@ -38,8 +58,8 @@ const Commands = enum {
 };
 
 
-fn exec_input(line: []u8, io: Io) !void {
-    _ = std.mem.replaceScalar(u8, line, '\n', ' '); 
+fn exec_input(line: []u8, io: Io, stdout: anytype) !void {
+    std.mem.replaceScalar(u8, line, '\n', ' '); 
     var args = std.mem.splitScalar(u8, line, ' ');
 
     const command = try Commands.parse(args.first());
@@ -47,7 +67,11 @@ fn exec_input(line: []u8, io: Io) !void {
     switch (command) {
         .cd => try changeDirectory(&args, io),
         .ls => try list(&args, io),
-        .exit => std.process.exit(0),
+        .echo => try last_words(&args, stdout),
+        .exit => {
+            std.debug.print("exit\n", .{});
+            std.process.exit(0);
+        },
     }
 }
 
@@ -63,13 +87,15 @@ fn changeDirectory(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar
     buffer[sub_path.len] = 0;
     const rc = std.os.linux.chdir(buffer[0..sub_path.len:0]);
 
-    if (rc != 0) return error.ChdirFailed;
+    if (rc != 0) return error.DirNotFound; // c style errors
 }
 
 
 
 fn list(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), io: std.Io) !void {
-    _ = args;
+    if(std.mem.trimEnd(u8, args.rest(), " \n\t\r").len > 0) return error.TooManyArguments; // provisional cuz ls accepts the directory too
+         
+    
     var dir = try Io.Dir.cwd().openDir(io, ".", .{ .iterate = true});
     defer dir.close(io);
 
@@ -77,4 +103,16 @@ fn list(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), io: std.
     while (try iter.next(io)) |entry| {
         std.debug.print("{s}\n", .{entry.name});
     }
+}
+
+
+fn last_words(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), stdout: anytype) !void {
+    const content = std.mem.trimEnd(u8, args.rest(), "\n\t\r");
+    try stdout.print("{s}\n", .{content});
+    try stdout.flush();
+}
+
+fn get_prompt(allocator: std.mem.Allocator, io: Io) !void {
+    _ = allocator;
+    _ = io;
 }
