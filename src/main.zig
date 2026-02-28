@@ -14,7 +14,7 @@ pub fn main(init: std.process.Init) !void {
     const stdout = &writer.interface;
 
     while (true) {
-        const prompt = try get_prompt(init.arena.allocator(), init.io);
+        const prompt = try get_prompt(init.arena.allocator(), init.io, init.minimal.environ);
         try stdout.print("{s} $ ", .{prompt});
         try stdout.flush();
 
@@ -96,8 +96,10 @@ fn changeDirectory(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar
 }
 
 fn list(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), io: std.Io) !void {
-    if(std.mem.trimEnd(u8, args.rest(), " \n\t\r").len > 0) return error.TooManyArguments; // provisional cuz ls accepts the directory too
-    var dir = try Io.Dir.cwd().openDir(io, ".", .{ .iterate = true});
+    const next_dir = args.next() orelse return error.PathRequired;
+    const next_dir_trimmed = std.mem.trimEnd(u8, next_dir, " \n\r\t");
+    const path = if(next_dir_trimmed.len > 0) next_dir_trimmed else ".";
+    var dir = try Io.Dir.cwd().openDir(io, path, .{ .iterate = true});
     defer dir.close(io);
 
     var iter: Io.Dir.Iterator = dir.iterate();
@@ -121,7 +123,9 @@ fn clear_screen(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), 
     try stdout.print("\x1B[2J\x1B[H", .{});
 }
 
-fn get_prompt(allocator: std.mem.Allocator, io: Io) ![]u8 {
-    const cwd: []u8 = try std.process.currentPathAlloc(io, allocator);
-    return cwd;
+fn get_prompt(allocator: std.mem.Allocator, io: Io, environ: std.process.Environ) ![]u8 {
+    _ = environ;
+    const full_path = try std.process.currentPathAlloc(io, allocator);
+
+    return full_path;
 }
