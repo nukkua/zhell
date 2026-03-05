@@ -161,6 +161,5 @@ fn get_prompt(allocator: std.mem.Allocator, io: Io, environ: std.process.Environ
     if (std.mem.startsWith(u8, full_path, home)) return try std.mem.concat(allocator, u8, &[_][]const u8{"~", std.mem.cut(u8, full_path, home).?.@"1"});
 
     assert(full_path.len > 0);
-
     return full_path;
 }
