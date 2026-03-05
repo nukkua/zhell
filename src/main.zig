@@ -62,6 +62,7 @@ const Commands = enum {
     ls,
     echo,
     clear,
+    cat,
     exit,
     pub fn parse(input: []const u8) !Commands {
         return std.meta.stringToEnum(Commands, input) orelse error.InvalidCommand;
@@ -75,10 +76,11 @@ fn exec_input(line: []u8, io: Io, stdout: anytype, environ: std.process.Environ,
     const command = try Commands.parse(args.first());
 
     switch (command) {
-        .cd => try changeDirectory(&args, io, environ, allocator),
-        .ls => try list(&args, io),
+        .cd => try change_directory(&args, io, environ, allocator),
+        .ls => try list(&args, io, stdout),
         .echo => try last_words(&args, stdout),
         .clear => try clear_screen(&args, stdout),
+        .cat => try cat(&args, io, stdout),
         .exit => {
             std.debug.print("exit\n", .{});
             std.process.exit(0);
@@ -86,7 +88,7 @@ fn exec_input(line: []u8, io: Io, stdout: anytype, environ: std.process.Environ,
     }
 }
 
-fn changeDirectory(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), io: Io, environ: std.process.Environ, allocator: std.mem.Allocator) !void {
+fn change_directory(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), io: Io, environ: std.process.Environ, allocator: std.mem.Allocator) !void {
     const path = args.next() orelse return error.PathRequired;
     if (std.mem.trimEnd(u8, args.rest(), " \n\r\t").len > 0) return error.TooManyArguments;
 
@@ -105,7 +107,7 @@ fn changeDirectory(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar
     try std.process.setCurrentDir(io, dir);
 }
 
-fn list(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), io: std.Io) !void {
+fn list(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), io: std.Io, stdout: anytype) !void {
     const next_dir = args.next() orelse return error.PathRequired;
     const next_dir_trimmed = std.mem.trimEnd(u8, next_dir, " \n\r\t");
     const path = if (next_dir_trimmed.len > 0) next_dir_trimmed else ".";
@@ -114,10 +116,11 @@ fn list(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), io: std.
 
     var dir = try Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
     defer dir.close(io);
-
-    var iter: Io.Dir.Iterator = dir.iterate();
+    
+    var iter = dir.iterate();
     while (try iter.next(io)) |entry| {
-        std.debug.print("{s}\n", .{entry.name});
+        try stdout.print("{s}\n", .{entry.name});
+        try stdout.flush();
     }
 }
 
@@ -140,13 +143,24 @@ fn clear_screen(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar), 
     try stdout.print("\x1B[2J\x1B[H", .{});
 }
 
+fn cat(args: *std.mem.SplitIterator(u8, std.mem.DelimiterType.scalar),io: Io ,stdout: anytype) !void {
+    const sub_path = args.next() orelse return error.TooManyArguments;
+    const file: std.Io.File = try Io.Dir.cwd().openFile(io, sub_path, .{});
+    defer file.close(io);
+
+    var buffer: [1024]u8 = undefined;
+    var reader = file.reader(io, &buffer);
+
+    _ = try reader.interface.stream(stdout, .unlimited);
+}
 fn get_prompt(allocator: std.mem.Allocator, io: Io, environ: std.process.Environ) ![]const u8 {
     const home = try environ.getAlloc(allocator, "HOME");
     assert(home.len > 0);
 
     const full_path = try std.process.currentPathAlloc(io, allocator);
 
-    if (std.mem.startsWith(u8, full_path, home)) return std.mem.cut(u8, full_path, home).?.@"1";
+    if (std.mem.startsWith(u8, full_path, home)) return try std.mem.concat(allocator, u8, &[_][]const u8{"~", std.mem.cut(u8, full_path, home).?.@"1"});
+
     assert(full_path.len > 0);
 
     
