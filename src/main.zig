@@ -4,7 +4,6 @@ const std = @import("std");
 const Io = std.Io;
 const assert = std.debug.assert;
 
-
 pub fn main(init: std.process.Init) !void {
     var reader_buffer: [1024]u8 = undefined;
     var reader = Io.File.stdin().reader(init.io, &reader_buffer);
@@ -163,7 +162,5 @@ fn get_prompt(allocator: std.mem.Allocator, io: Io, environ: std.process.Environ
 
     assert(full_path.len > 0);
 
-    
-    
     return full_path;
 }

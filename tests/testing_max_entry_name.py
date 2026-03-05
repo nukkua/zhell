@@ -1,3 +1,5 @@
-max_entry_name = 87
-a = "a" * max_entry_name
+import shutil
+
+terminal_width = shutil.get_terminal_size().columns
+a = "a" * terminal_width
 print(a)
