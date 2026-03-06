@@ -26,7 +26,6 @@ pub fn main(init: std.process.Init) !void {
                 std.process.exit(0);
             },
         };
-
         var args = std.mem.splitScalar(u8, std.mem.trimEnd(u8, line, "\n"), ' ');
         _ = exec_input(line, init.io, stdout, init.minimal.environ, init.arena.allocator()) catch |err| switch (err) {
             error.InvalidCommand => {
